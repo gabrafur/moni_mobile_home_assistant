@@ -62,9 +62,8 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
 GitHub Actions validate the repository with HACS, hassfest, and the unit tests.
-An official HACS default listing additionally requires a brand contribution to
-`home-assistant/brands` and a GitHub release. Custom repository installation
-does not require waiting for that listing.
+The integration ships its official brand icon through Home Assistant's local
+brands proxy and publishes versioned GitHub releases.
 
 Dependency and implementation origins are documented in
 [DEPENDENCY_PROVENANCE.md](DEPENDENCY_PROVENANCE.md).
