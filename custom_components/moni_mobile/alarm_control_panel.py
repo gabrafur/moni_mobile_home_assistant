@@ -1,4 +1,11 @@
-"""Alarm control panel platform for Moni Mobile."""
+# SPDX-FileCopyrightText: 2026 Gabriel B. Furlan
+# SPDX-License-Identifier: MIT
+"""Expose a Moni Mobile TCP account as a Home Assistant alarm panel.
+
+The proprietary client is synchronous, so every network or disk operation is
+sent to Home Assistant's executor. The entity polls because the legacy TCP
+service doesn't provide a push subscription for partition state.
+"""
 
 from __future__ import annotations
 
@@ -29,6 +36,8 @@ from .const import (
     DEFAULT_NAME,
 )
 
+# Home Assistant moved these constants to enums over time. Keep the fallback so
+# existing installations can migrate to HACS without changing their HA version.
 try:
     from homeassistant.components.alarm_control_panel import (
         AlarmControlPanelEntityFeature,
@@ -45,11 +54,17 @@ except ImportError:  # pragma: no cover - compatibility with older HA.
     from homeassistant.const import STATE_ALARM_ARMED_AWAY, STATE_ALARM_DISARMED
 
 _LOGGER = logging.getLogger(__name__)
+
+# YAML parsers may coerce an unquoted code such as 0123 to a number. Reading the
+# original scalar keeps leading zeroes intact while the configured value remains
+# a safe fallback for installations that don't use the conventional secret key.
 _RAW_ALARM_CODE_RE = re.compile(
     r"^\s*moni_mobile_alarm_code:\s*(?P<value>[^#\r\n]+?)\s*(?:#.*)?$",
     re.MULTILINE,
 )
 
+# Keep the public YAML contract stable during extraction from the smart-home
+# monorepo. Credentials remain in ``secrets.yaml`` and are never logged here.
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
         vol.Required(CONF_HOST): cv.string,
@@ -69,6 +84,8 @@ async def async_setup_platform(
     discovery_info=None,
 ) -> None:
     """Set up the Moni Mobile alarm platform from YAML."""
+    # ``Path.read_text`` is blocking I/O, even though the secrets file is small.
+    # Running it in the executor keeps Home Assistant's event loop responsive.
     alarm_code = await hass.async_add_executor_job(
         _read_raw_alarm_code, config[CONF_ALARM_CODE]
     )
@@ -83,7 +100,7 @@ async def async_setup_platform(
 
 
 def _read_raw_alarm_code(fallback: str) -> str:
-    """Read the alarm code preserving leading zeros from secrets.yaml."""
+    """Read the alarm code while preserving leading zeros from secrets.yaml."""
     secrets_path = Path("/config/secrets.yaml")
     if not secrets_path.exists():
         return str(fallback)
@@ -103,6 +120,7 @@ def _read_raw_alarm_code(fallback: str) -> str:
 class MoniMobileAlarm(AlarmControlPanelEntity):
     """Home Assistant entity for a Moni Mobile alarm account."""
 
+    # The server offers request/response exchanges rather than state callbacks.
     _attr_should_poll = True
 
     def __init__(
@@ -111,6 +129,8 @@ class MoniMobileAlarm(AlarmControlPanelEntity):
         """Initialize the alarm entity."""
         self.hass = hass
         self._attr_name = name
+        # Preserve the pre-HACS identity so migration doesn't create a duplicate
+        # entity in Home Assistant's entity registry.
         self._attr_unique_id = f"moni_mobile_{client.host}_{client.port}"
         self._client = client
         self._state = None
@@ -137,6 +157,8 @@ class MoniMobileAlarm(AlarmControlPanelEntity):
     @property
     def extra_state_attributes(self) -> dict[str, str | int | None]:
         """Expose non-sensitive diagnostics."""
+        # Never expose account passwords, alarm codes, tokens, or decrypted
+        # payloads. Stage and last error are sufficient for troubleshooting.
         return {
             ATTR_HOST: self._client.host,
             ATTR_PORT: self._client.port,
@@ -149,6 +171,8 @@ class MoniMobileAlarm(AlarmControlPanelEntity):
         try:
             state = await self.hass.async_add_executor_job(self._client.get_state)
         except Exception as exc:  # noqa: BLE001 - report as entity diagnostic.
+            # Network, padding, and protocol failures all mean the entity cannot
+            # currently provide a trustworthy state; keep Home Assistant alive.
             self._available = False
             self._last_error = str(exc)
             return
@@ -170,6 +194,8 @@ class MoniMobileAlarm(AlarmControlPanelEntity):
             self._last_error = str(exc)
             raise HomeAssistantError(str(exc)) from exc
         _LOGGER.info("Moni Mobile alarm arm command accepted")
+        # Publish the accepted command immediately. The next poll reconciles it
+        # with the partition summary once the remote server catches up.
         self._state = STATE_ALARM_ARMED_AWAY
 
     async def async_alarm_disarm(self, code=None) -> None:
@@ -180,4 +206,6 @@ class MoniMobileAlarm(AlarmControlPanelEntity):
             self._last_error = str(exc)
             raise HomeAssistantError(str(exc)) from exc
         _LOGGER.info("Moni Mobile alarm disarm command accepted")
+        # As with arming, polling remains authoritative after this optimistic
+        # state update.
         self._state = STATE_ALARM_DISARMED

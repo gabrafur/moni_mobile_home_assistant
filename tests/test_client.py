@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Gabriel B. Furlan
+# SPDX-License-Identifier: MIT
 """Unit tests for the Moni Mobile protocol client."""
 
 from __future__ import annotations

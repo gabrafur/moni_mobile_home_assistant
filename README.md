@@ -1,5 +1,7 @@
 # Moni Mobile Alarm for Home Assistant
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Custom Home Assistant integration for locally polling and controlling alarm
 accounts that expose the proprietary Moni Mobile TCP protocol.
 
@@ -70,4 +72,6 @@ Dependency and implementation origins are documented in
 
 ## License
 
-[MIT](LICENSE)
+Copyright (c) 2026 Gabriel B. Furlan. Distributed under the [MIT License](LICENSE).
+Python source files also carry SPDX identifiers so automated scanners can
+associate them with the repository license unambiguously.
